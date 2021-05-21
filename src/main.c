@@ -10,9 +10,19 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 
 #include "dynamicArray.h"
 #include "brainfuck.h"
+
+
+// Detect the current os
+#ifdef __unix__
+	#define IS_WINDOWS 0
+#else
+	#define IS_WINDOWS 1
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -20,22 +30,62 @@ int main(int argc, char* argv[])
 
     FILE *sourceFile;
     FILE *compiledSource;
-    
-    
-    if (argc == 2)
-    {
-        sourceFile = fopen(argv[1], "rb");
-        // Unable to open the file
-        if (sourceFile == NULL)
-        {
-            printf("Unable to open %s. Make sure the file exists and that you have the required permissions.\n", argv[1]);
-            return 1;
-        }
-    }
-    // Too many or none arguments
+
+    // Flag to keep the temporary .c file
+    int keepFile = 0;
+    // How big is the memory block reserved to BrainFuck
+    int memBlockLength = 32678;
+    // Compiled binary filename
+    char outputFilename[255] = "output";
+    // Select the proper extension for the current OS
+    char extension[5];
+    if (IS_WINDOWS == 0)
+    	strcpy(extension, ".out");
     else
+    	strcpy(extension, ".exe");
+    strcat(outputFilename, extension);
+
+    // Argument parser
+    int c;
+    while ((c = getopt(argc, argv, "hkl:o:")) != -1)
     {
-        printf("USAGE: %s filename.bf\n", argv[0]);
+    	switch (c)
+    	{
+    		// -k: keep temp .c file
+    		case 'k':
+    			keepFile = 1;
+    			break;
+    		// -l (size): size of the memory block
+    		case 'l':
+    			memBlockLength = atoi(optarg);
+    			break;
+    		// -o (filename): compiled binary filename
+    		case 'o':
+    			strcpy(outputFilename, optarg);
+    			break;
+    		// -h or wrong syntax: print help
+    		case 'h':
+    		case '?':
+    			printf("Usage: %s [-h -k -l (size) -o (filename)] filename.bf\n", argv[0]);
+    			printf("\n-h\tPrints this help message\n");
+    			printf("-l\tKeep the generated .c file (the file gets deleted otherwise)\n");
+    			printf("-l\tSets the length of the memory block reserved to BrainFuck (default: 32768, the pointer starts at the middle)\n");
+    			printf("-o\tSets the output filename (default: \"output\" without extension)\n");
+    			return 1;
+    	}
+    }
+    
+    // Check if the argument number is wrong
+    if (argc - optind != 1)
+    {
+    	printf("Too many arguments or missing source filepath. Use %s -h for help\n", argv[0]);
+    	return 1;
+    }
+
+    sourceFile = fopen(argv[optind], "rb");
+    if (sourceFile == NULL)
+    {
+    	printf("Unable to open %s. Make sure the file exists and that you have the required permissions.\n", argv[1]);
         return 1;
     }
 
@@ -56,7 +106,12 @@ int main(int argc, char* argv[])
 
     // Open a new .c file
     compiledSource = fopen("temp.compiled.c", "w");
-    fprintf(compiledSource, "%s", beginning);
+    if (compiledSource == NULL)
+    {
+    	printf("Unable to write to the current directory. Make sure you have write access to the folder.\n");
+    	return 1;
+    }
+    fprintf(compiledSource, "#include <stdio.h>\nint main() {\nchar memory[%d] = {0};\nint pointer = %d;\n", memBlockLength, (int)memBlockLength/2);
 
     // For each character, write its C counterpart to the .c file
     for (int i = 0; i < file.used; i++)
@@ -101,19 +156,25 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    fprintf(compiledSource, "%s", ending);
+    fprintf(compiledSource, "return 0;\n}");
 
     fclose(compiledSource);
     destroyArray(&file);
 
+    char command[300] = "gcc temp.compiled.c -o ";
+    strcat(command, outputFilename);
+
     // Try to open gcc and compile the translated source file
-    if (system("gcc temp.compiled.c -o output") != 0)
+    if (system(command) != 0)
     {
         printf("\nAn error occourred. Maybe gcc isn't installed?\n");
         return 1;
     }
     else
         printf("\nCompilation was successful.\n");
+
+    if (keepFile == 0)
+    	remove("temp.compiled.c");
 
     return 0;
 }
