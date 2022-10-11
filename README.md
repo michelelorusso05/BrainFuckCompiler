@@ -12,4 +12,4 @@ Run the compiler from the command line telling it what file do you want to compi
 #### Example
 bfc.exe [flags] main.bf
 ## How does it work
-The compiler translates the brainfuck source into a .c file and compilates that.
+The compiler translates the brainfuck source into a .c file and compiles that.
